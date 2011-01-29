@@ -43,11 +43,16 @@ Pin external_step_pin = ES_STEP_PIN;
 // FIXME: Hardcoded steps per revolution. Eventually, this needs to be configurable
 // Set to 200 for standard Makerbot Stepper Motor Driver V2.3
 // Set to 5 * 200 for MakerGear 1:5 geared stepper
-uint16_t extruder_steps_per_rev = 200;
+uint16_t extruder_steps_per_rev = 400;
 
-volatile uint32_t ext_stepper_ticks_per_step = 0;
-volatile int32_t ext_stepper_counter = 0;
-
+#ifdef PWM_STEPPER
+	bool dir = 1; // direction 1 => forward, 0 => backward
+	volatile float ext_stepper_ticks_per_step = 0;
+	volatile float ext_stepper_counter = 0;
+#else
+	volatile uint32_t ext_stepper_ticks_per_step = 0;
+	volatile int32_t ext_stepper_counter = 0;
+#endif
 
 // TIMER0 is used to PWM motor driver A enable on OC0B.
 void initExtruderMotor() {
@@ -75,9 +80,19 @@ void setStepperMode(bool mode, bool external/* = false*/) {
 	external_stepper_motor_mode = mode && external;
 
 	if (stepper_motor_mode) {
+
+#ifdef PWM_STEPPER
+		TCCR0A = _BV(WGM01) | _BV(WGM00);  // Leave pin off by default
+		TCCR0B = _BV(CS01) | _BV (CS00); // 64x prescaler
+		TIMSK0 = _BV(TOIE0); // Interrupt on overflow
+		OCR0A = 0;
+		OCR0B = 0;
+		setExtruderMotor(last_extruder_speed);
+#else
 		TCCR0A = 0;
 		TCCR0B = _BV(CS01) | _BV(CS00);
 		TIMSK0 = _BV(TOIE0);
+#endif
 	} else if (external_stepper_motor_mode) {
 		// Setup pins
 		external_enable_pin.setDirection(true);
@@ -97,6 +112,7 @@ void setStepperMode(bool mode, bool external/* = false*/) {
 		OCR0A = ES_TICK_LENGTH-1;
 		// 8x prescaler, with CTC mode: 16MHz/8 = 2 MHz timer ticks
 		TCCR0B = _BV(CS01);
+
 	} else {
 		TCCR0A = _BV(WGM01) | _BV(WGM00);  // Leave pin off by default
 		TCCR0B = _BV(CS01) | _BV(CS00);
@@ -110,6 +126,16 @@ void setExtruderMotor(int16_t speed) {
 	if (speed == last_extruder_speed) return;
 	last_extruder_speed = speed;
 	ATOMIC_BLOCK(ATOMIC_RESTORESTATE) {
+#ifdef PWM_STEPPER
+		if (stepper_motor_mode) {
+			dir = speed >= 0;
+			if (!dir) { speed = -speed; }
+			if (speed > 255) { speed = 255; }
+			OCR0A = speed;
+			OCR0B = speed;
+		}
+		else
+#endif
 		if (!stepper_motor_mode && !external_stepper_motor_mode) {
 			TIMSK0 = 0;
 			if (speed == 0) {
@@ -139,10 +165,27 @@ void setExtruderMotor(int16_t speed) {
 	}
 }
 
-
 // set the motor's  RPM -- in microseconds for one full revolution
 void setExtruderMotorRPM(uint32_t micros, bool direction) {
-	// Just ignore this command if we're not using an external stepper driver
+
+#ifdef PWM_STEPPER
+	ATOMIC_BLOCK(ATOMIC_RESTORESTATE) {
+		if (micros == 0) {
+			ext_stepper_ticks_per_step = 0; // implies a pause
+			TCCR0A = _BV(WGM01) | _BV(WGM00);
+		} else {
+			// 64*(1+OCRA) / 16,000,000 = ES_TICK_LENGTH (in microseconds)
+			// 64 times prescaler, running from a 16 MHz clock.
+			// if we choose OCR0A to be 255, the comparison and overflow interrupt would be the same
+			// therefore the compare could be used for PWM and overflow for calculating new ticks.
+			// We cast to uint32_t to avoid overflow but improve accuracy before float division
+			ext_stepper_ticks_per_step = (float) micros / ((uint32_t) ES_TICK_LENGTH * (uint32_t) extruder_steps_per_rev); // calculate
+		}
+
+		dir = direction;
+
+	}
+#else
 	if (!external_stepper_motor_mode) return;
 	ATOMIC_BLOCK(ATOMIC_RESTORESTATE) {
 		if (micros > 0) {
@@ -167,7 +210,7 @@ void setExtruderMotorRPM(uint32_t micros, bool direction) {
 			// DEBUG_LED.setValue(false);
 		}
 	}
-
+#endif
 }
 
 #ifdef DEFAULT_EXTERNAL_STEPPER
@@ -185,46 +228,83 @@ void setExtruderMotorOn(bool on)
 
 // ## H-Bridge Stepper Driving using Timer0 Overflow ##
 
-const uint8_t hb1_en_pattern = 0xdd;
-const uint8_t hb1_dir_pattern = 0xc3;
-const uint8_t hb2_en_pattern = 0x77;
-const uint8_t hb2_dir_pattern = 0xf0;
+#ifdef PWM_STEPPER
+	// These alternative half-step patterns allows the stepper wires to be connected in the same colour sequence as on Gen3 stepper boards
+	const uint8_t hb1_en_pattern = 0xbb;
+	const uint8_t hb1_dir_pattern = 0xc3;
+	const uint8_t hb2_en_pattern = 0xee;
+	const uint8_t hb2_dir_pattern = 0xf0;
+#else
+	const uint8_t hb1_en_pattern = 0xdd;
+	const uint8_t hb1_dir_pattern = 0xc3;
+	const uint8_t hb2_en_pattern = 0x77;
+	const uint8_t hb2_dir_pattern = 0xf0;
+#endif
 
 // at speed 255, ~80Hz full-stepping
 const int16_t acc_rollover = (6375/2);
 
-volatile uint8_t stepper_pwm = 0;
-
-inline void setStep() {
-	const bool enable = (last_extruder_speed != 0) && (((stepper_pwm++) & 0x01) == 0);
-	const uint8_t mask = 1 << stepper_phase;
-	HB1_DIR_PIN.setValue((hb1_dir_pattern & mask) != 0);
-	HB1_ENABLE_PIN.setValue( enable && ((hb1_en_pattern & mask) != 0) );
-	HB2_DIR_PIN.setValue((hb2_dir_pattern & mask) != 0);
-	HB2_ENABLE_PIN.setValue( enable && ((hb2_en_pattern & mask) != 0) );
-}
-
-ISR(TIMER0_OVF_vect) {
-	stepper_accumulator += last_extruder_speed;
-	if (stepper_accumulator >= acc_rollover) {
-		stepper_accumulator -= acc_rollover;
-		stepper_phase = (stepper_phase + 2) & 0x07;
-	} else if (stepper_accumulator < 0) {
-		stepper_accumulator += acc_rollover;
-		stepper_phase = (stepper_phase - 2) & 0x07;
+//volatile uint8_t stepper_pwm = 0;
+#ifdef PWM_STEPPER
+	inline void setStep() {
+		const uint8_t mask = 1 << stepper_phase;
+		HB1_DIR_PIN.setValue(hb1_dir_pattern & mask);
+		HB2_DIR_PIN.setValue(hb2_dir_pattern & mask);
+		// NB: Timer0B corresponds to hb1, Timer0A corresponds to hb2
+		TCCR0A =  (hb1_en_pattern & mask ? _BV(COM0B1) : 0) \
+				| (hb2_en_pattern & mask ? _BV(COM0A1) : 0) \
+				 | _BV(WGM01) | _BV(WGM00);
 	}
-	setStep();
-}
+
+	ISR(TIMER0_OVF_vect) {
+		if (ext_stepper_ticks_per_step != 0) {
+			// Yes, this is floating point arithmetic in an interrupt!
+			// Ugly, but works, and greatly improves accuracy.
+			++ext_stepper_counter;
+			if (ext_stepper_counter >= ext_stepper_ticks_per_step) {
+				ext_stepper_counter -= ext_stepper_ticks_per_step;
+				if (dir) {
+					stepper_phase = (stepper_phase + 1) & 0x07;
+				} else {
+					stepper_phase = (stepper_phase - 1) & 0x07;
+				}
+				setStep();
+			}
+		}
+	}
+
+#else
+	inline void setStep() {
+		const bool enable = (last_extruder_speed != 0) && (((stepper_pwm++) & 0x01) == 0);
+		const uint8_t mask = 1 << stepper_phase;
+		HB1_DIR_PIN.setValue((hb1_dir_pattern & mask) != 0);
+		HB1_ENABLE_PIN.setValue( enable && ((hb1_en_pattern & mask) != 0) );
+		HB2_DIR_PIN.setValue((hb2_dir_pattern & mask) != 0);
+		HB2_ENABLE_PIN.setValue( enable && ((hb2_en_pattern & mask) != 0) );
+
+	ISR(TIMER0_OVF_vect) {
+		stepper_accumulator += last_extruder_speed;
+		if (stepper_accumulator >= acc_rollover) {
+			stepper_accumulator -= acc_rollover;
+			stepper_phase = (stepper_phase + 2) & 0x07;
+		} else if (stepper_accumulator < 0) {
+			stepper_accumulator += acc_rollover;
+			stepper_phase = (stepper_phase - 2) & 0x07;
+		}
+		setStep();
+	}
 
 // ## External Stepper Driving using Timer 0 Compare A ##
 
-ISR(TIMER0_COMPA_vect) {
-	if (ext_stepper_ticks_per_step > 0) {
-		++ext_stepper_counter;
-		if (ext_stepper_counter >= ext_stepper_ticks_per_step) {
-			external_step_pin.setValue(true);
-			ext_stepper_counter -= ext_stepper_ticks_per_step;
-			external_step_pin.setValue(false);
+	ISR(TIMER0_COMPA_vect) {
+		if (ext_stepper_ticks_per_step > 0) {
+			++ext_stepper_counter;
+			if (ext_stepper_counter >= ext_stepper_ticks_per_step) {
+				external_step_pin.setValue(true);
+				ext_stepper_counter -= ext_stepper_ticks_per_step;
+				external_step_pin.setValue(false);
+			}
 		}
 	}
-}
+
+#endif

@@ -12,9 +12,9 @@ SIGNAL(SIG_OUTPUT_COMPARE1A)
   #else
     //increment our index
     if (motor1_dir == MC_FORWARD)
-      stepper_index = (stepper_index - 1) % 8;
+      stepper_index = (stepper_index - 1) & 7;
     else
-      stepper_index = (stepper_index + 1) % 8;
+      stepper_index = (stepper_index + 1) & 7;
       
     //coil 1
     digitalWrite(MOTOR_1_DIR_PIN,   coil_a_direction & (1 << stepper_index));

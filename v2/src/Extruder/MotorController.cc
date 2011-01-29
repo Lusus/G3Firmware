@@ -83,10 +83,12 @@ void MotorController::update() {
 		board.setMotorSpeedRPM(rpm, direction);
 		board.setMotorOn(!paused && on);
 #else
+	#ifdef PWM_STEPPER
+		board.setMotorSpeed(speed);
+	#endif
 		board.setMotorSpeedRPM((!paused&&on) ? rpm : 0, direction);
 #endif
 	}
-
 }
 
 void MotorController::setSpeed(int speed_in) {

@@ -143,8 +143,14 @@ void ExtruderBoard::reset() {
 		DDRB |= _BV(1) | _BV(2);
 	}
 */
-	
-#if defined DEFAULT_STEPPER
+
+#if defined PWM_STEPPER
+#warning Using PWM stepper!
+	setStepperMode(true, false);
+	// Init servo ports: OC1A and OC1B as outputs when not linked to counter.
+	PORTB &= ~_BV(1) & ~_BV(2);
+	DDRB |= _BV(1) | _BV(2);
+#elif defined DEFAULT_STEPPER
 #warning Using internal stepper!
 	setStepperMode(true, false);
 	// Init servo ports: OC1A and OC1B as outputs when not linked to counter.

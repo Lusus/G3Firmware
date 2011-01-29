@@ -70,10 +70,22 @@
 #define HB2_ENABLE_PIN		Pin(PortD,6)
 #define HB2_DIR_PIN			Pin(PortB,0)
 
-// define the tick length, or how often the interrupt is called,
-// for the external stepper, in half microseconds:
-// 200 means 100 us -> 10 KHz
-#define ES_TICK_LENGTH 200
+#ifdef PWM_STEPPER
+	// define the tick length, or how often the interrupt is called,
+	// for the PWM stepper, in microseconds
+
+	// 64*(1+OCRA)*1,000,000 / 16,000,000 = ES_TICK_LENGTH
+	// if we choose OCR0A to be 255, the comparison and overflow interrupt would be the same
+	// therefore the compare could be used for PWM and overflow for calculating new ticks.
+
+	#define ES_TICK_LENGTH	1024
+#else
+	// define the tick length, or how often the interrupt is called,
+	// for the external stepper, in half microseconds:
+	// 200 means 100 us -> 10 KHz
+	#define ES_TICK_LENGTH 200
+
+#endif
 
 // Enable = "D10"
 #define ES_ENABLE_PIN		Pin(PortB,2)

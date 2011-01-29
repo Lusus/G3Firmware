@@ -54,9 +54,27 @@ extern volatile int iState;             // Integrator state
 extern volatile int dState;             // Last position input
 
 //variables to keep track of stepper state.
+
+/*
+// Wave Drive
 const byte coil_a_enabled   = B10011001;
 const byte coil_a_direction = B11000011;
 const byte coil_b_enabled   = B01100110;
+const byte coil_b_direction = B11110000;
+*/
+
+/*
+// Full Step (at half speed)
+const byte coil_a_enabled   = B11111111;
+const byte coil_a_direction = B11000011;
+const byte coil_b_enabled   = B11111111;
+const byte coil_b_direction = B11110000;
+*/
+
+// Half Step
+const byte coil_a_enabled   = B10111011;
+const byte coil_a_direction = B11000011;
+const byte coil_b_enabled   = B11101110;
 const byte coil_b_direction = B11110000;
 
 //what state are we in?

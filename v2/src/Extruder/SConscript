@@ -26,6 +26,7 @@ from os.path import dirname
 platform = ARGUMENTS.get('platform','ecv22')
 stepper = ARGUMENTS.get('stepper','false')
 extstepper = ARGUMENTS.get('extstepper','false')
+pwmstepper = ARGUMENTS.get('pwmstepper','false')
 f_cpu='16000000L'
 
 if platform == 'ec36':
@@ -104,6 +105,9 @@ if (stepper == 'true'):
 
 if (extstepper == 'true'):
    flags.append('-DDEFAULT_EXTERNAL_STEPPER=1')
+
+if (pwmstepper == 'true'):
+	flags.append('-DPWM_STEPPER=1')
 
 if (relays == 'true'):
    flags.append('-DDEFAULT_RELAYS=1')

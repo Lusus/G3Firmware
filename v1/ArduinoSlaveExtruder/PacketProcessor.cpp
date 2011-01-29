@@ -174,7 +174,9 @@ void handle_query()
     
   //WORKING
   case SLAVE_CMD_SET_MOTOR_1_PWM:
-    motor1_control = MC_PWM;
+    #if MOTOR_STYLE == 0
+      motor1_control = MC_PWM;
+    #endif
     motor1_pwm = masterPacket.get_8(2);
     break;
 
@@ -193,7 +195,7 @@ void handle_query()
       motor1_control = MC_STEPPER;
       stepper_ticks = motor1_target_rpm / (MOTOR_STEPS * MOTOR_STEP_MULTIPLIER);
       stepper_high_pwm = motor1_pwm;
-      stepper_low_pwm = round((float)motor1_pwm * 0.4);
+      stepper_low_pwm = 0; // As in Mendel Reprap Firmware
     #endif
     break;
 
