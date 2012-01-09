@@ -21,7 +21,7 @@ if [ ! $AVRDUDE ]; then
     fi
 fi
 
-FIRMWARE=PRODUCTION
+FIRMWARE=MB-mb24-v3.0
 FWDIR=`dirname $0`
 
 while true; do
@@ -30,9 +30,16 @@ while true; do
     if [ $AD_CONF ]; then
 	CONF_FLAGS="-C $AD_CONF "
     fi
-    # Burn lock bits and fuses
-    $AVRDUDE $CONF_FLAGS -v -b38400 -pm644p -cusbtiny -e -Ulock:w:0x3F:m -Uefuse:w:0xFD:m -Uhfuse:w:0xDC:m -Ulfuse:w:0xFF:m
-    # Burn firmware
-    $AVRDUDE $CONF_FLAGS -v -b38400 -B1.0 -pm644p -cusbtiny -Uflash:w:${FWDIR}/${FIRMWARE}.hex:i -Ulock:w:0x0F:m
+    # Upload firmware
+    $AVRDUDE $CONF_FLAGS -cstk500v1 -P/dev/ttyUSB0 -b57600 -v -v -pm1280 -P/dev/ttyUSB0 -Uflash:w:${FWDIR}/${FIRMWARE}.hex:i 
 done
+
+#!/bin/bash
+
+while true; do
+    echo "Press ENTER to upload"
+    read
+    # Burn lock bits and fuses
+done
+
 

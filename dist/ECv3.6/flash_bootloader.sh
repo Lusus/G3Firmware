@@ -21,7 +21,7 @@ if [ ! $AVRDUDE ]; then
     fi
 fi
 
-FIRMWARE=PRODUCTION
+FIRMWARE=ATmegaBOOT_168_ec3x
 FWDIR=`dirname $0`
 
 while true; do
@@ -31,8 +31,17 @@ while true; do
 	CONF_FLAGS="-C $AD_CONF "
     fi
     # Burn lock bits and fuses
-    $AVRDUDE $CONF_FLAGS -v -b38400 -pm644p -cusbtiny -e -Ulock:w:0x3F:m -Uefuse:w:0xFD:m -Uhfuse:w:0xDC:m -Ulfuse:w:0xFF:m
+    $AVRDUDE $CONF_FLAGS -v -pm168 -cusbtiny -e -Ulock:w:0x3F:m -Uefuse:w:0x00:m -Uhfuse:w:0xdd:m -Ulfuse:w:0xee:m 
     # Burn firmware
-    $AVRDUDE $CONF_FLAGS -v -b38400 -B1.0 -pm644p -cusbtiny -Uflash:w:${FWDIR}/${FIRMWARE}.hex:i -Ulock:w:0x0F:m
+    $AVRDUDE $CONF_FLAGS -v -pm168 -cusbtiny -Uflash:w:${FWDIR}/${FIRMWARE}.hex:i -Ulock:w:0x0F:m
 done
+
+#!/bin/bash
+
+while true; do
+    echo "Press ENTER to upload"
+    read
+    # Burn lock bits and fuses
+done
+
 
